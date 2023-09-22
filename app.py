@@ -34,6 +34,7 @@ def signup():
     password = data.get('password')
 
     hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    stored_password = hashed_password.decode('utf-8')
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -42,13 +43,46 @@ def signup():
         INSERT INTO users (full_name, username, password)
         VALUES (%s, %s, %s)
         """,
-        (full_name, username, hashed_password)
+        (full_name, username, stored_password)
     )
     conn.commit()
     conn.close()
     
     response = {'message': 'Signup successful'}
     return jsonify(response), 201
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    username_or_email = data.get('username_or_email')
+    password = data.get('password')
+
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT user_id, full_name, points, password
+        FROM users
+        WHERE username = %s OR email = %s
+        """,
+        (username_or_email, username_or_email)
+    )
+    user = cursor.fetchone()
+    print(user)
+    if user and bcrypt.checkpw(password.encode('utf-8'), user[3].encode('utf-8')):
+        user_id, full_name, points = user[0], user[1], user[2]
+        response = {
+            'message': 'Login successful',
+            'user_id': user_id,
+            'full_name': full_name,
+            'points': points
+        }
+        return jsonify(response), 200
+    else:
+        print(user[2])
+        response = {'message': 'Invalid username or password'}
+        return jsonify(response), 401
 
 if __name__ ==  '__main__':
     app.run(debug=True, host='0.0.0.0')
