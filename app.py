@@ -17,15 +17,6 @@ def get_db_connection():
     connection = psycopg2.connect(**db_config)
     return connection
 
-@app.route('/')
-def hello_world():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT 'Hello, PostgreSQL!'")
-    result = cursor.fetchone()[0]
-    conn.close()
-    return result
-
 @app.route('/signup', methods=['POST'])
 def signup():
     data = request.json
@@ -38,18 +29,26 @@ def signup():
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT INTO users (full_name, username, password)
-        VALUES (%s, %s, %s)
-        """,
-        (full_name, username, stored_password)
-    )
-    conn.commit()
-    conn.close()
     
-    response = {'message': 'Signup successful'}
-    return jsonify(response), 201
+    try: 
+        cursor.execute(
+            """
+            INSERT INTO users (full_name, username, password)
+            VALUES (%s, %s, %s)
+            """,
+            (full_name, username, stored_password)
+        )
+        conn.commit()
+
+        response = {'message': 'Signup successful'}
+        return jsonify(response), 201
+    
+    except:
+        conn.rollback()
+        response = {'message': 'Signup failed'}
+        return jsonify(response), 500
+    finally:
+        conn.close()
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -80,9 +79,39 @@ def login():
         }
         return jsonify(response), 200
     else:
-        print(user[2])
+        print(user)
         response = {'message': 'Invalid username or password'}
         return jsonify(response), 401
+
+@app.route('/update-profile',methods = ['POST'])
+def edit_profile():
+    data = request.json
+    user_id = data.get('id')
+    new_full_name = data.get('full_name')
+    new_username = data.get('username')
+    new_email = data.get('email')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try : 
+        cursor.execute(
+            """
+            UPDATE users
+            SET full_name = %s, username = %s, email = %s
+            WHERE user_id = %s
+            """,
+            (new_full_name, new_username, new_email, user_id)
+        )
+        conn.commit()
+        response = {'message': 'Profile update succesfully'}
+        return jsonify(response), 201
+    except:
+        conn.rollback()
+        response = {'message': 'Profile update failed'}
+        return jsonify(response), 500
+    finally:
+        conn.close()
 
 if __name__ ==  '__main__':
     app.run(debug=True, host='0.0.0.0')
