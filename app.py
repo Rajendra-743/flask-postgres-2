@@ -17,6 +17,10 @@ def get_db_connection():
     connection = psycopg2.connect(**db_config)
     return connection
 
+@app.route('/')
+def land():
+    return "hello world!"
+
 @app.route('/signup', methods=['POST'])
 def signup():
     data = request.json
@@ -39,7 +43,6 @@ def signup():
             (full_name, username, stored_password)
         )
         conn.commit()
-
         response = {'message': 'Signup successful'}
         return jsonify(response), 201
     
@@ -112,6 +115,22 @@ def edit_profile():
         return jsonify(response), 500
     finally:
         conn.close()
+
+@app.route("/reset-pass", methods = ['POST'])
+def reset_pw():
+    data = request.json
+    username = data.get('username')
+    new_pass = data.get('password')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        pass
+    except:
+        pass
+    finally:
+        pass
 
 if __name__ ==  '__main__':
     app.run(debug=True, host='0.0.0.0')
