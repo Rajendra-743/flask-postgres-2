@@ -122,13 +122,32 @@ def reset_pw():
     username = data.get('username')
     new_pass = data.get('password')
 
+    hashed_new_pass = bcrypt.hashpw(new_pass.encode('utf-8'), bcrypt.gensalt())
+    stored_new_pass = hashed_new_pass.decode('utf-8')
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
-        pass
+        cursor.execute(
+            """
+            UPDATE users
+            SET password = %s
+            WHERE username = %s
+            """,
+            (stored_new_pass, username)
+        )
+        if cursor.rowcount == 0:
+            response = {'message': 'Username not found'}
+            return jsonify(response), 404
+        
+        conn.commit()
+        response = {'message': 'Reset Password succesfully'}
+        return jsonify(response), 201
     except:
-        pass
+        conn.rollback()
+        response = {'message': 'Reset Password failed'}
+        return jsonify(response), 500
     finally:
         pass
 
