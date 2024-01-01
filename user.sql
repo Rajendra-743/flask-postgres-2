@@ -37,6 +37,19 @@ CREATE TABLE transaksi_ubah_botol (
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
+CREATE TABLE transaksi_tukar_point (
+    id_t_poin BIGSERIAL NOT NULL PRIMARY KEY,
+    nama_barang VARCHAR(255),
+    jumlah_poin INT,
+    tanggal TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_id INT,
+    barang_id INT,
+    status VARCHAR(20) DEFAULT 'Belum Dikonfirmasi',
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (barang_id) REFERENCES barang_tukar(barang_id)
+);
+
+
 INSERT INTO barang_tukar (
     barang_name,
     barang_points,

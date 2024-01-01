@@ -421,5 +421,162 @@ def update_stok():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/store-transaction', methods=['POST'])
+def store_transaction():
+    data = request.json
+    user_id = data.get('user_id')
+    jumlah_botol = data.get('jumlah_botol')
+    jumlah_poin = data.get('jumlah_poin')
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Store the transaction in the database
+        cursor.execute(
+            """
+            INSERT INTO transaksi_ubah_botol (user_id, jumlah_botol, jumlah_poin)
+            VALUES (%s, %s, %s)
+            """,
+            (user_id, jumlah_botol, jumlah_poin)
+        )
+        conn.commit()
+        conn.close()
+        response = {'message': 'Transaction stored successfully'}
+        return jsonify(response), 200
+
+    except Exception as e:
+        print(f"Error in store_transaction: {str(e)}")
+        traceback.print_exc()
+        conn.rollback()
+        response = {'message': 'Failed to store transaction'}
+        return jsonify(response), 500
+
+@app.route('/update-points', methods=['POST'])
+def update_points():
+    data = request.json
+    user_id = data.get('user_id')
+    points_to_add = data.get('points')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            UPDATE users
+            SET points = points + %s
+            WHERE user_id = %s
+            """,
+            (points_to_add, user_id)
+        )
+        conn.commit()
+        response = {'message': 'Points updated successfully'}
+        return jsonify(response), 200
+    except:
+        conn.rollback()
+        response = {'message': 'Failed to update points'}
+        return jsonify(response), 500
+    finally:
+        conn.close()
+
+@app.route('/get-notifications', methods=['GET'])
+def get_notifications():
+    try:
+        user_id = request.args.get('user_id', type=int)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT id_t_botol, jumlah_botol, jumlah_poin, tanggal
+            FROM transaksi_ubah_botol
+            WHERE user_id = %s
+            ORDER BY tanggal DESC
+            """,
+            (user_id,)
+        )
+
+        notifications_botol = cursor.fetchall()
+
+        cursor.execute(
+            """
+            SELECT id_t_poin, nama_barang, jumlah_poin, tanggal, user_id, barang_id, status
+            FROM transaksi_tukar_point
+            WHERE user_id = %s
+            ORDER BY tanggal DESC
+            """,
+            (user_id,)
+        )
+
+        notifications_point = cursor.fetchall()
+
+        notification_list = []
+        for notification in notifications_botol:
+            notification_data = {
+                'id_t_botol': notification[0],
+                'type': 'Setor Botol',
+                'jumlah_botol': notification[1],
+                'jumlah_poin': notification[2],
+                'tanggal': notification[3].isoformat(),  # Convert datetime to ISO format
+            }
+            notification_list.append(notification_data)
+        
+        for notification in notifications_point:
+            notification_data = {
+                'id_t_poin': notification[0],
+                'type': 'Tukar Poin',
+                'nama_barang' : notification[1],
+                'jumlah_point': notification[2],
+                'tanggal': notification[3].isoformat(),
+                'user_id': notification[4],
+                'barang_id': notification[5],
+                'status': notification[6],
+            }
+            notification_list.append(notification_data)
+
+        notification_list.sort(key=lambda x: x['tanggal'], reverse=True)
+
+        conn.close()
+
+        return jsonify(notification_list), 200
+
+    except Exception as e:
+        print(f"Error in get_notifications: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'error': 'Internal Server Error'}), 500
+
+@app.route('/store-exchange-evidence', methods=['POST'])
+def store_exchange_evidence():
+    data = request.json
+    user_id = data.get('user_id')
+    barang_id = data.get('barang_id')
+    total_points = data.get('total_points')
+    exchange_date = data.get('exchange_date')
+    barang_name = data.get('barang_name')
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO transaksi_tukar_point (nama_barang ,jumlah_poin, tanggal, user_id, barang_id)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (barang_name, total_points, exchange_date, user_id, barang_id)
+        )
+        conn.commit()
+        conn.close()
+        response = {'message': 'Exchange evidence stored successfully'}
+        return jsonify(response), 200
+
+    except Exception as e:
+        print(f"Error in store_exchange_evidence: {str(e)}")
+        traceback.print_exc()
+        conn.rollback()
+        response = {'message': 'Failed to store exchange evidence'}
+        return jsonify(response), 500
+
 if __name__ ==  '__main__':
     app.run(debug=True, host='0.0.0.0')
