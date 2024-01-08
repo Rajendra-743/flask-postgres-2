@@ -25,13 +25,13 @@ def get_db_connection():
     connection = psycopg2.connect(**db_config)
     return connection
 
-def get_exchangeable_items():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT barang_name, barang_points, barang_stok FROM barang_tukar")
-    items = cursor.fetchall()
-    conn.close()
-    return items
+# def get_exchangeable_items():
+#     conn = get_db_connection()
+#     cursor = conn.cursor()
+#     cursor.execute("SELECT barang_name, barang_points, barang_stok FROM barang_tukar")
+#     items = cursor.fetchall()
+#     conn.close()
+#     return items
 
 @app.route('/')
 def land():
@@ -159,12 +159,10 @@ def login():
             'user_id': user_id,
             'full_name': full_name,
             'points' : points,
-            'exp': datetime.utcnow() + timedelta(days=30)
+            'exp': datetime.utcnow() + timedelta(days=1)
         }
         token = jwt.encode(token_payload, secret_key, algorithm='HS256')
         
-        # decoded = jwt.decode(token, algorithms='HS256',verify=True, key= secret_key)
-
         response = {
             'message': 'Login successful',
             'user_id': user_id,
@@ -312,6 +310,26 @@ def exchangeable_items():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/get-barang-stock/<int:barang_id>', methods=['GET'])
+def get_barang_stock(barang_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT barang_stok FROM barang_tukar WHERE barang_id = %s", (barang_id,))
+        stock = cursor.fetchone()
+
+        if stock is not None:
+            stock_value = stock[0]
+            conn.close()
+            return jsonify({'barang_id': barang_id, 'barang_stok': stock_value}), 200
+        else:
+            conn.close()
+            return jsonify({'error': 'Product not found'}), 404
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/get-users', methods=['GET'])
 def get_users():
     try:
@@ -342,8 +360,7 @@ def get_users():
 @app.route('/delete-user', methods=['POST'])
 def delete_user():
     data = request.json
-    user_id = data.get('user_id')  # Fetch the user ID to delete
-
+    user_id = data.get('user_id')
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -415,7 +432,7 @@ def update_stok():
         conn.commit()
         conn.close()
 
-        response = {'message': 'User deleted successfully'}
+        response = {'message': 'Update stock successfully'}
         return jsonify(response), 200
 
     except Exception as e:
@@ -501,7 +518,7 @@ def get_notifications():
 
         cursor.execute(
             """
-            SELECT id_t_poin, nama_barang, jumlah_poin, tanggal, user_id, barang_id, status
+            SELECT id_t_poin, nama_barang, jumlah_barang, jumlah_poin, tanggal, user_id, barang_id, status, alasan
             FROM transaksi_tukar_point
             WHERE user_id = %s
             ORDER BY tanggal DESC
@@ -518,7 +535,7 @@ def get_notifications():
                 'type': 'Setor Botol',
                 'jumlah_botol': notification[1],
                 'jumlah_poin': notification[2],
-                'tanggal': notification[3].isoformat(),  # Convert datetime to ISO format
+                'tanggal': notification[3].isoformat(), 
             }
             notification_list.append(notification_data)
         
@@ -527,11 +544,13 @@ def get_notifications():
                 'id_t_poin': notification[0],
                 'type': 'Tukar Poin',
                 'nama_barang' : notification[1],
-                'jumlah_point': notification[2],
-                'tanggal': notification[3].isoformat(),
-                'user_id': notification[4],
-                'barang_id': notification[5],
-                'status': notification[6],
+                'jumlah_barang' : notification[2],
+                'jumlah_point': notification[3],
+                'tanggal': notification[4].isoformat(),
+                'user_id': notification[5],
+                'barang_id': notification[6],
+                'status': notification[7],
+                'alasan': notification[8],
             }
             notification_list.append(notification_data)
 
@@ -546,6 +565,69 @@ def get_notifications():
         traceback.print_exc()
         return jsonify({'error': 'Internal Server Error'}), 500
 
+@app.route('/get-acc-rewards', methods=['GET'])
+def get_acc_rewards():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                users.user_id,
+                full_name,
+                username,
+                email,
+                points,
+                id_t_poin,
+                nama_barang,
+                jumlah_barang,
+                jumlah_poin,
+                tanggal,
+                barang_id,
+                status,
+                alasan
+            FROM
+                users
+            LEFT JOIN
+                transaksi_tukar_point ON users.user_id = transaksi_tukar_point.user_id
+            WHERE
+                users.user_id IN (SELECT user_id FROM transaksi_tukar_point)
+            ORDER BY
+                tanggal DESC
+            """
+        )
+
+        acc_reward_list = []
+
+        for row in cursor.fetchall():
+            acc_reward_data = {
+                'user_id': row[0],
+                'full_name': row[1],
+                'username': row[2],
+                'email': row[3],
+                'points': row[4],
+                'id_t_poin': row[5],
+                'nama_barang': row[6],
+                'jumlah_barang': row[7],
+                'jumlah_point': row[8],
+                'tanggal': row[9].isoformat() if row[9] is not None else None,
+                'barang_id': row[10],
+                'status': row[11],
+                'alasan': row[12]
+                }
+            acc_reward_list.append(acc_reward_data)
+        
+        conn.close()
+
+        return jsonify(acc_reward_list), 200
+
+    except Exception as e:
+        print(f"Error in get_acc_rewards: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'error': 'Internal Server Error'}), 500
+
+
 @app.route('/store-exchange-evidence', methods=['POST'])
 def store_exchange_evidence():
     data = request.json
@@ -554,6 +636,7 @@ def store_exchange_evidence():
     total_points = data.get('total_points')
     exchange_date = data.get('exchange_date')
     barang_name = data.get('barang_name')
+    jumlah_barang = data.get('jumlah_barang')
 
     try:
         conn = get_db_connection()
@@ -561,10 +644,11 @@ def store_exchange_evidence():
 
         cursor.execute(
             """
-            INSERT INTO transaksi_tukar_point (nama_barang ,jumlah_poin, tanggal, user_id, barang_id)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO transaksi_tukar_point (nama_barang ,jumlah_barang ,
+            jumlah_poin, tanggal, user_id, barang_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (barang_name, total_points, exchange_date, user_id, barang_id)
+            (barang_name, jumlah_barang, total_points, exchange_date, user_id, barang_id)
         )
         conn.commit()
         conn.close()
@@ -577,6 +661,111 @@ def store_exchange_evidence():
         conn.rollback()
         response = {'message': 'Failed to store exchange evidence'}
         return jsonify(response), 500
+
+@app.route('/accept-exchange', methods=['POST'])
+def accept_exchange():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        data = request.json
+        id_t_poin = data.get('id_t_poin')
+
+        cursor.execute(
+            """
+            SELECT *
+            FROM transaksi_tukar_point
+            WHERE id_t_poin = %s
+            """,
+            (id_t_poin,)
+        )
+
+        transaction_detail = cursor.fetchone()
+        print(transaction_detail)
+
+        if transaction_detail:
+            cursor.execute(
+                """
+                UPDATE transaksi_tukar_point
+                SET status = 'Diterima'
+                WHERE id_t_poin = %s
+                """,
+                (id_t_poin,)
+            )
+
+            cursor.execute(
+                """
+                UPDATE barang_tukar
+                SET barang_stok = barang_stok - %s
+                WHERE barang_id = %s
+                """,
+                (transaction_detail[2], transaction_detail[6])
+            )
+
+            # Deduct user points
+            cursor.execute(
+                """
+                UPDATE users
+                SET points = points - %s
+                WHERE user_id = %s
+                """,
+                (transaction_detail[3], transaction_detail[5])
+            )
+
+            conn.commit()
+
+            return jsonify({'message': 'Penukaran diterima'}), 200
+
+        return jsonify({'error': 'Transaksi tidak ditemukan'}), 404
+
+    except Exception as e:
+        print(f"Error in accept_exchange: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'error': 'Internal Server Error'}), 500
+
+@app.route('/decline-exchange', methods=['POST'])
+def decline_exchange():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        data = request.json
+        id_t_poin = data.get('id_t_poin')
+        alasan = data.get('alasan')
+
+        # Fetch transaction details
+        cursor.execute(
+            """
+            SELECT *
+            FROM transaksi_tukar_point
+            WHERE id_t_poin = %s
+            """,
+            (id_t_poin,)
+        )
+
+        transaction_detail = cursor.fetchone()
+
+        if transaction_detail:
+            # Update status to 'diterima'
+            cursor.execute(
+                """
+                UPDATE transaksi_tukar_point
+                SET status = 'Ditolak', alasan = %s
+                WHERE id_t_poin = %s
+                """,
+                (alasan,id_t_poin)
+            )
+
+            conn.commit()
+
+            return jsonify({'message': 'Penukaran ditolak'}), 200
+
+        return jsonify({'error': 'Transaksi tidak ditemukan'}), 404
+
+    except Exception as e:
+        print(f"Error in decline_exchange: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'error': 'Internal Server Error'}), 500
 
 if __name__ ==  '__main__':
     app.run(debug=True, host='0.0.0.0')

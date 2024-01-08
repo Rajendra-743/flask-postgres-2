@@ -40,6 +40,7 @@ CREATE TABLE transaksi_ubah_botol (
 CREATE TABLE transaksi_tukar_point (
     id_t_poin BIGSERIAL NOT NULL PRIMARY KEY,
     nama_barang VARCHAR(255),
+    jumlah_barang INT,
     jumlah_poin INT,
     tanggal TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     user_id INT,
@@ -53,11 +54,13 @@ CREATE TABLE transaksi_tukar_point (
 INSERT INTO barang_tukar (
     barang_name,
     barang_points,
-    barang_stok
+    barang_stok,
+    barang_image
 ) VALUES (
     'Gula 1 Kg',
     100,
-    10
+    10,
+    'assets/beras.jpg'
 );
 
 INSERT INTO admin ( 
@@ -83,4 +86,9 @@ INSERT INTO sampah (
 ALTER TABLE barang_tukar
 ADD COLUMN barang_image VARCHAR(255);
 
-UPDATE barang_tukar SET barang_image = 'assets/gula.jpg' WHERE barang_id = 2;
+ALTER TABLE transaksi_tukar_point
+ADD COLUMN alasan VARCHAR(255) DEFAULT '-';
+
+UPDATE barang_tukar SET barang_name = 'Beras 1 Kg' WHERE barang_id = 3;
+
+DELETE FROM barang_tukar WHERE barang_id = 3;
