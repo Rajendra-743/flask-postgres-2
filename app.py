@@ -3,11 +3,13 @@ import psycopg2
 import bcrypt
 import jwt
 from flask import Flask,request, jsonify    
+from flask_socketio import SocketIO, emit
 from psycopg2 import sql
 from datetime import datetime, timedelta
 import os
 
 app = Flask(__name__)
+socketio = SocketIO(app, logging=True)
 
 secret_key = str(os.environ.get('CLEIN_SECRET_KEY'))
 
@@ -448,7 +450,6 @@ def store_transaction():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Store the transaction in the database
         cursor.execute(
             """
             INSERT INTO transaksi_ubah_botol (user_id, jumlah_botol, jumlah_poin)
@@ -702,7 +703,6 @@ def accept_exchange():
                 (transaction_detail[2], transaction_detail[6])
             )
 
-            # Deduct user points
             cursor.execute(
                 """
                 UPDATE users
@@ -733,7 +733,6 @@ def decline_exchange():
         id_t_poin = data.get('id_t_poin')
         alasan = data.get('alasan')
 
-        # Fetch transaction details
         cursor.execute(
             """
             SELECT *
@@ -746,7 +745,6 @@ def decline_exchange():
         transaction_detail = cursor.fetchone()
 
         if transaction_detail:
-            # Update status to 'diterima'
             cursor.execute(
                 """
                 UPDATE transaksi_tukar_point
@@ -767,5 +765,48 @@ def decline_exchange():
         traceback.print_exc()
         return jsonify({'error': 'Internal Server Error'}), 500
 
-if __name__ ==  '__main__':
-    app.run(debug=True, host='0.0.0.0')
+active_user = None
+@socketio.on('qr_scan')
+def handle_qr_scan(data):
+    global active_user
+    user_id = data.get('user_id')
+    qr_code = data.get('qr_code')
+    print('inside handle qr scan')
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT *
+            FROM users
+            WHERE user_id = %s
+            """,
+            (user_id,)
+        )
+        users = cursor.fetchone()
+
+        if active_user is None and users:
+            if qr_code == "CLEIN_CLEVERBIN_123":
+                active_user = users
+                emit('open_bin', broadcast=True)
+                emit('message', {'message': 'Palang terbuka'}, broadcast=True)
+            else:
+                emit('message', {'message': 'QR code tidak valid'}, broadcast=True)
+        else:
+            emit('message', {'message': 'Sudah ada pengguna aktif'}, broadcast=True)
+    
+    except Exception as e:
+        print(f"Error in handle_qr_scan: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'error': 'Internal Server Error'}), 500
+
+@socketio.on('finish')
+def handle_finish():
+    global active_user
+
+    emit('close_bin', broadcast=True)
+    emit('message', {'message': 'Pembersihan selesai'}, broadcast=True)
+    active_user = None
+
+if __name__ ==  '__main__': 
+    socketio.run(app, debug=True, host='0.0.0.0')
