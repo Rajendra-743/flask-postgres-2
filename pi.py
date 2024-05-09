@@ -14,8 +14,8 @@ GPIO.setwarnings(False)
 pwm = GPIO.PWM(SERVO_PIN, 50)
 
 #UV SENSOR
-UV_SENSOR_PINS = [18, 19, 20, 21, 22, 23]
-GPIO.setup(UV_SENSOR_PINS, GPIO.IN)
+IR_SENSOR_PINS = [22,27]
+GPIO.setup(IR_SENSOR_PINS, GPIO.IN)
 
 #Fungsi untuk membuka palang tempat sampah
 def open_bin():
@@ -29,22 +29,20 @@ def close_bin():
     time.sleep(1)   
     pwm.stop()      
 
-def read_uv_sensor(pin):
-    GPIO.setup(pin, GPIO.IN) 
+def read_ir_sensor(pin): 
     return GPIO.input(pin)
 
-#Fungsi untuk mengirim data sensor UV ke server
-def send_uv_sensor_data():
-    uv_data = {}
-    for i, pin in enumerate(UV_SENSOR_PINS):
-        uv_data[f"uv_sensor_{i+1}"] = read_uv_sensor(pin)
-    sio.emit('uv_sensor_data', uv_data)
+# #Fungsi untuk mengirim data sensor IR ke server
+# def send_ir_sensor_data():  
+#     ir_data = {}
+#     for i, pin in enumerate(IR_SENSOR_PINS):
+#         ir_data[f"ir_sensor_{i+1}"] = read_ir_sensor(pin)
 
 #Menentukan Ukuran Botol
-def determine_bottle_size(uv_readings):
-    num_detected = sum(uv_readings)
+def determine_bottle_size(ir_readings):
+    num_detected = sum(ir_readings)
 
-    if num_detected == 2:
+    if num_detected == 1:
         return "Botol Kecil"
     elif num_detected == 4:
         return "Botol Sedang"
@@ -74,12 +72,12 @@ if __name__ == "__main__":
     try:
         sio.connect('http://192.168.30.113:5000')
         while True:
-            uv_readings = [read_uv_sensor(pin) for pin in UV_SENSOR_PINS]
-            bottle_size = determine_bottle_size(uv_readings)
+            ir_readings = [read_ir_sensor(pin) for pin in IR_SENSOR_PINS]
+            bottle_size = determine_bottle_size(ir_readings)
             print("Detected Bottle Size:", bottle_size)
             sio.emit('bottle_size', {'size': bottle_size})
             time.sleep(1)
     except Exception as e:
         logger.error("Koneksi ke server Flask gagal: %s", str(e))
-    finally:
+    finally:    
         GPIO.cleanup()

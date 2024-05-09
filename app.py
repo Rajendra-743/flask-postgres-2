@@ -2,6 +2,7 @@ import traceback
 import psycopg2
 import bcrypt
 import jwt
+import time
 from flask import Flask,request, jsonify    
 from flask_socketio import SocketIO, emit
 from psycopg2 import sql
@@ -765,13 +766,44 @@ def decline_exchange():
         traceback.print_exc()
         return jsonify({'error': 'Internal Server Error'}), 500
 
+@app.route('/get-sampah-socket', methods=['GET'])
+def get_sampah_socket():
+    global sensor_data
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM sampah WHERE nama_sampah=%s", (sensor_data,))
+        sampah = cursor.fetchall()
+
+        sampah_list = []
+        for sampah in sampah:
+            sampah_data = {
+                'id_sampah': sampah[0],
+                'nama_sampah': sampah[1],
+                'ukuran': sampah[2],
+                'poin_sampah': sampah[3],
+            }
+            sampah_list.append(sampah_data)
+
+        print(sampah_list)
+        conn.close()
+
+        sensor_data = None
+
+        return jsonify(sampah_list), 200
+
+    except Exception as e:
+        print(f"Error in get_sampah: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'error': 'Internal Server Error'}), 500
+
 active_user = None
 @socketio.on('qr_scan')
 def handle_qr_scan(data):
     global active_user
     user_id = data.get('user_id')
     qr_code = data.get('qr_code')
-    print('inside handle qr scan')
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -807,6 +839,25 @@ def handle_finish():
     emit('close_bin', broadcast=True)
     emit('message', {'message': 'Pembersihan selesai'}, broadcast=True)
     active_user = None
+
+@socketio.on('open_close')
+def handle_scanned():
+    time.sleep(2)
+    emit('open_bin', broadcast=True)
+    time.sleep(2)
+    emit('close_bin', broadcast=True)
+    emit('message', {'message': 'botol masuk'}, broadcast=True)
+
+sensor_data = None
+@socketio.on('bottle_size')
+def receive_sensor_data(data):
+    global sensor_data
+    new_sensor_data = data.get('size')
+    
+    if new_sensor_data != 'Unknown':
+        sensor_data = new_sensor_data
+        return sensor_data, 200
+
 
 if __name__ ==  '__main__': 
     socketio.run(app, debug=True, host='0.0.0.0')
