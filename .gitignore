@@ -3,3 +3,4 @@ __pycache__/
 user.sql/
 test.py/
 pi.py/
+secretkey.py/
