@@ -5,14 +5,11 @@ import jwt
 import time
 from flask import Flask,request, jsonify    
 from flask_socketio import SocketIO, emit
-from psycopg2 import sql
 from datetime import datetime, timedelta
-import os
 
 app = Flask(__name__)
 socketio = SocketIO(app, logging=True)
-
-secret_key = str(os.environ.get('CLEIN_SECRET_KEY'))
+secret_key = 'EJXMGN_wWDw9IhNx_vIcNHw9I4AcfSY0Q_19n1mz58I'
 
 db_config= {
     'database' : 'clein',
@@ -162,7 +159,7 @@ def login():
             'user_id': user_id,
             'full_name': full_name,
             'points' : points,
-            'exp': datetime.utcnow() + timedelta(days=1)
+            'exp': datetime.now() + timedelta(days=1)
         }
         token = jwt.encode(token_payload, secret_key, algorithm='HS256')
         
