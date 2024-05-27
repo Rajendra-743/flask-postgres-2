@@ -4,4 +4,4 @@ import secrets
 secret_key = secrets.token_urlsafe(32)
 print(secret_key) 
 
-print('test')
+print('test2')
