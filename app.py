@@ -4,11 +4,11 @@ import bcrypt
 import jwt
 import time
 from flask import Flask,request, jsonify    
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room, leave_room
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
-socketio = SocketIO(app, logging=True)
+socketio = SocketIO(app, logging=True, cors_allowed_origin='*')
 secret_key = 'EJXMGN_wWDw9IhNx_vIcNHw9I4AcfSY0Q_19n1mz58I'
 
 db_config= {
@@ -350,7 +350,6 @@ def get_users():
             }
             user_list.append(user_data)
 
-        conn.close()
 
         return jsonify(user_list), 200
 
@@ -763,6 +762,29 @@ def decline_exchange():
         traceback.print_exc()
         return jsonify({'error': 'Internal Server Error'}), 500
 
+@app.route('/get-totals', methods=['GET'])
+def get_totals():
+    try:
+        user_id = request.args.get('user_id', type=int)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT COALESCE(SUM(jumlah_poin), 0) AS total_poin, COALESCE(SUM(jumlah_botol), 0) AS total_botol 
+            FROM transaksi_ubah_botol WHERE user_id = %s
+        """,
+        (user_id,)               
+        )
+        result = cursor.fetchone()
+
+        if result:
+            total_poin, total_botol = result
+            return jsonify({'total_poin': total_poin, 'total_botol': total_botol}), 200
+        else:
+            return jsonify({'error': 'No data found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 @app.route('/get-sampah-socket', methods=['GET'])
 def get_sampah_socket():
     global sensor_data
@@ -783,7 +805,7 @@ def get_sampah_socket():
             }
             sampah_list.append(sampah_data)
 
-        print(sampah_list)
+
         conn.close()
 
         sensor_data = None
@@ -829,21 +851,35 @@ def handle_qr_scan(data):
         traceback.print_exc()
         return jsonify({'error': 'Internal Server Error'}), 500
 
-@socketio.on('finish')
-def handle_finish():
-    global active_user
+@socketio.on('join')
+def on_join(data):
+    user_id = data['user_id']
+    join_room(f'user_{user_id}')
+    emit('message', {'message': f'User {user_id} has joined the room user_{user_id}'}, room=f'user_{user_id}')
 
-    emit('close_bin', broadcast=True)
-    emit('message', {'message': 'Pembersihan selesai'}, broadcast=True)
+@socketio.on('leave')
+def on_leave(data):
+    user_id = data['user_id']
+    leave_room(f'user_{user_id}')
+    emit('message', {'message': f'User {user_id} has left the room user_{user_id}'}, room=f'user_{user_id}')
+
+@socketio.on('finish')
+def handle_finish(data):
+    global active_user
+    user_id = data.get('user_id')
+
+    emit('close_bin', room=f'user_{user_id}')
+    emit('message', {'message': 'Pembersihan selesai'}, room=f'user_{user_id}')
     active_user = None
 
 @socketio.on('open_close')
-def handle_scanned():
+def handle_scanned(data):
+    user_id = data.get('user_id')
     time.sleep(2)
-    emit('open_bin', broadcast=True)
+    emit('open_bin', room=f'user_{user_id}')
     time.sleep(2)
-    emit('close_bin', broadcast=True)
-    emit('message', {'message': 'botol masuk'}, broadcast=True)
+    emit('close_bin', room=f'user_{user_id}')
+    emit('message', {'message': 'botol masuk'}, room=f'user_{user_id}')
 
 sensor_data = None
 @socketio.on('bottle_size')

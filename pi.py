@@ -70,7 +70,7 @@ def handle_message(data):
 
 if __name__ == "__main__":
     try:
-        sio.connect('http://192.168.30.113:5000')
+        sio.connect('http://62.72.56.204:8080')
         while True:
             ir_readings = [read_ir_sensor(pin) for pin in IR_SENSOR_PINS]
             bottle_size = determine_bottle_size(ir_readings)

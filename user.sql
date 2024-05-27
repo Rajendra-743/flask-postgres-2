@@ -51,6 +51,18 @@ CREATE TABLE transaksi_tukar_point (
 );
 
 
+INSERT INTO transaksi_ubah_botol (
+    jumlah_botol,
+    jumlah_poin,
+    user_id
+) VALUES (
+    166666,
+    999999,
+    11
+);
+
+
+
 INSERT INTO barang_tukar (
     barang_name,
     barang_points,
@@ -58,19 +70,17 @@ INSERT INTO barang_tukar (
     barang_image
 ) VALUES (
     'Gula 1 Kg',
-    100,
+    50,
     10,
-    'assets/beras.jpg'
+    'assets/gula.jpg'
 );
 
-INSERT INTO admin ( 
+INSERT INTO admins ( 
     admin_username,
-    admin_email,
     admin_pass
 ) VALUES (
-    'Minyak Goreng 1 Liter',
-    100,
-    10
+    'adminclein1',
+    '$2b$12$zPx3eOMc/NrmQx7flRomXuIYrQqx3hTywmXDSeawgEX0nNzxWDtQq'
 );
 
 INSERT INTO sampah ( 
