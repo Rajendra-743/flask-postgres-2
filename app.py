@@ -3,215 +3,315 @@ import psycopg2
 import bcrypt
 import jwt
 import time
-from flask import Flask,request, jsonify    
-from flask_socketio import SocketIO, emit, join_room, leave_room
-from datetime import datetime, timedelta
+from functools import wraps
+from flask import Flask, request, jsonify
+from flask_socketio import SocketIO
 
 app = Flask(__name__)
 socketio = SocketIO(app, logging=True, cors_allowed_origin='*')
 secret_key = 'EJXMGN_wWDw9IhNx_vIcNHw9I4AcfSY0Q_19n1mz58I'
 
-db_config= {
-    'database' : 'clein',
-    'user'     : 'ganesa',
-    'password' : 'ganesaganteng123.',
-    'host'     : 'localhost',
-    'port'     : 5432
+# Konfigurasi database
+db_config = {
+    'database': 'Clein',
+    'user': 'ilham',
+    'password': 'rajendra123',
+    'host': 'localhost',
+    'port': 5432
 }
 
-
-
+# Fungsi koneksi ke database
 def get_db_connection():
-    connection = psycopg2.connect(**db_config)
-    return connection
+    try:
+        connection = psycopg2.connect(**db_config)
+        return connection
+    except Exception as e:
+        print("Database connection error:", e)
+        raise
 
-# def get_exchangeable_items():
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-#     cursor.execute("SELECT barang_name, barang_points, barang_stok FROM barang_tukar")
-#     items = cursor.fetchall()
-#     conn.close()
-#     return items
+def hash_password(password):
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed_password.decode('utf-8')
 
-@app.route('/')
-def land():
-    return "hello world!"
+# Dekorator untuk validasi token JWT
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'message': 'Token is missing'}), 403
 
-@app.route('/signup_admin', methods=['POST'])
-def signup_admin():
-    data = request.json
-    username = data.get('admin_username')
-    password = data.get('admin_pass')
+        try:
+            payload = jwt.decode(token.split()[1], secret_key, algorithms=['HS256'])
+            print("Decoded Token Payload:", payload)  # Debug log payload
+        except jwt.ExpiredSignatureError:
+            return jsonify({'message': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'message': 'Invalid token'}), 403
 
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-    stored_password = hashed_password.decode('utf-8')
+        return f(payload, *args, **kwargs)
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try: 
+    return decorated
+
+# Fungsi untuk menambah admin baru
+def add_admin(username, password):
+    hashed_password = hash_password(password)
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         cursor.execute(
             """
             INSERT INTO admins (admin_username, admin_pass)
             VALUES (%s, %s)
             """,
-            (username, stored_password)
+            (username, hashed_password)
         )
         conn.commit()
-        response = {'message': 'Signup successful'}
-        return jsonify(response), 201
-    
-    except:
-        conn.rollback()
-        response = {'message': 'Signup failed'}
-        return jsonify(response), 500
+        return True
+    except (Exception, psycopg2.DatabaseError) as error:
+        print("Error while adding admin", error)
+        return False
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
+# Route untuk mengecek semua route yang tersedia
+@app.route('/routes', methods=['GET'])
+def show_routes():
+    routes = []
+    for rule in app.url_map.iter_rules():
+        routes.append({
+            'endpoint': rule.endpoint,
+            'methods': list(rule.methods),
+            'url': str(rule)
+        })
+    return jsonify(routes), 200
 
-@app.route('/signup', methods=['POST'])
-def signup():
-    data = request.json
-    full_name = data.get('full_name')
-    username = data.get('username')
-    password = data.get('password')
+@app.route('/')
+def land():
+    return "Hello, World!"
 
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-    stored_password = hashed_password.decode('utf-8')
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try: 
-        cursor.execute(
-            """
-            INSERT INTO users (full_name, username, password)
-            VALUES (%s, %s, %s)
-            """,
-            (full_name, username, stored_password)
-        )
-        conn.commit()
-        response = {'message': 'Signup successful'}
-        return jsonify(response), 201
-    
-    except:
-        conn.rollback()
-        response = {'message': 'Signup failed'}
-        return jsonify(response), 500
-    finally:
-        conn.close()
-
+# LOGIN ADMIN
 @app.route('/login-admin', methods=['POST'])
 def login_admin():
-    data = request.json
-    username_or_email = data.get('username_or_email')
-    password = data.get('password')
+    if not request.is_json:
+        return jsonify({'message': 'Unsupported Media Type'}), 415
 
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT id_admin, admin_username, admin_pass
-        FROM admins
-        WHERE admin_username = %s OR admin_email = %s
-        """,
-        (username_or_email, username_or_email)
-    )
-    admin = cursor.fetchone()
-    print(admin)
-    if admin and bcrypt.checkpw(password.encode('utf-8'), admin[2].encode('utf-8')):
-        id_admin, admin_username = admin[0], admin[1]
-        response = {
-            'message': 'Login successful',
-            'id_admin': id_admin,
-            'admin_username': admin_username,
-        }
-        return jsonify(response), 200
-    else:
-        print(admin)
-        response = {'message': 'Invalid username or password'}
-        return jsonify(response), 401
+    try:
+        data = request.get_json(force=True)
+        username = data.get('username')
+        password = data.get('password')
 
-@app.route('/login', methods=['POST'])
-def login():
-    data = request.json
-    username_or_email = data.get('username_or_email')
-    password = data.get('password')
+        if not username or not password:
+            return jsonify({'message': 'Username and password are required'}), 400
 
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT user_id, full_name, points, password
-        FROM users
-        WHERE username = %s OR email = %s
-        """,
-        (username_or_email, username_or_email)
-    )
-    user = cursor.fetchone()
-    print(user)
-    if user and bcrypt.checkpw(password.encode('utf-8'), user[3].encode('utf-8')):
-        user_id, full_name, points = user[0], user[1], user[2]
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-        token_payload = {
-            'user_id': user_id,
-            'full_name': full_name,
-            'points' : points,
-            'exp': datetime.now() + timedelta(days=1)
-        }
-        token = jwt.encode(token_payload, secret_key, algorithm='HS256')
-        
-        response = {
-            'message': 'Login successful',
-            'user_id': user_id,
-            'full_name': full_name,
-            'points' : points,
-            'access_token' : token
-        }
-        return jsonify(response), 200
-    else:
-        print(user)
-        response = {'message': 'Invalid username or password'}
-        return jsonify(response), 401
-
-@app.route('/update-profile',methods = ['POST'])
-def edit_profile():
-    data = request.json
-    user_id = data.get('id')
-    new_full_name = data.get('full_name')
-    new_username = data.get('username')
-    new_email = data.get('email')
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try : 
         cursor.execute(
             """
-            UPDATE users
-            SET full_name = %s, username = %s, email = %s
+            SELECT id_admin, admin_username, admin_pass
+            FROM admins
+            WHERE admin_username = %s
+            """,
+            (username,)
+        )
+        admin = cursor.fetchone()
+
+        if admin:
+            hashed_password = admin[2]
+            if bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8')):
+                id_admin, admin_username = admin[0], admin[1]
+                token = jwt.encode({'id_admin': id_admin, 'exp': time.time() + 3600}, secret_key, algorithm='HS256')
+
+                print("Generated Token:", token)  # Debug log token
+
+                return jsonify({
+                    'message': 'Login successful',
+                    'id_admin': id_admin,
+                    'admin_username': admin_username,
+                    'token': token
+                }), 200
+            else:
+                return jsonify({'message': 'Invalid username or password'}), 401
+        else:
+            return jsonify({'message': 'Invalid username or password'}), 401
+
+    except Exception as e:
+        print(f"Error during login: {e}")
+        traceback.print_exc()
+        return jsonify({'message': 'Server error', 'error': str(e)}), 500
+
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+# GET DATA USER (User Details)
+@app.route('/user-details', methods=['GET'])
+@token_required
+def user_details(payload):
+    user_id = payload.get('id_admin')  # Ambil id_admin dari token
+
+    print("User ID from token:", user_id)  # Debug log user_id
+
+    if user_id is None:
+        return jsonify({'message': 'User ID not found in token'}), 400
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Query data pengguna dari tabel `users` berdasarkan user_id
+        cursor.execute(
+            """
+            SELECT user_id, full_name, email, points
+            FROM users
             WHERE user_id = %s
             """,
-            (new_full_name, new_username, new_email, user_id)
+            (user_id,)
+        )
+        
+        user = cursor.fetchone()
+        print("Query result:", user)  # Debug log hasil query
+
+        if user:
+            user_id, full_name, email, points = user
+            response = {
+                'user_id': user_id,
+                'full_name': full_name,
+                'email': email,
+                'points': points
+            }
+            return jsonify(response), 200
+        else:
+            return jsonify({'message': 'User not found'}), 404
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'message': 'Internal server error', 'error': str(e)}), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close() 
+
+# Jalankan aplikasi Flask
+if __name__ == '__main__':
+    app.run(debug=True)
+
+#! GET PROFILE ADMIN
+@app.route('/user-details', methods=['GET'])
+@token_required
+def user_details(payload):
+    user_id = payload.get('id_admin')  # Ambil id_admin dari token
+
+    print("User ID from token:", user_id)  # Log user_id
+
+    if user_id is None:
+        return jsonify({'message': 'User ID not found in token'}), 400
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Query data pengguna dari tabel `users` berdasarkan user_id
+        cursor.execute(
+            """
+            SELECT user_id, full_name, email, points
+            FROM users
+            WHERE user_id = %s
+            """,
+            (user_id,)
+        )
+        
+        user = cursor.fetchone()
+        print("Query result:", user)  # Log hasil query
+
+        if user:
+            user_id, full_name, email, points = user
+            response = {
+                'user_id': user_id,
+                'full_name': full_name,
+                'email': email,
+                'points': points
+            }
+            return jsonify(response), 200
+        else:
+            print("No user found for user_id:", user_id)  # Log jika tidak ada pengguna ditemukan
+            return jsonify({'message': 'User not found'}), 404
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'message': 'Internal server error', 'error': str(e)}), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+#! UPDATE ADMIN
+@app.route('/update-profile', methods=['POST'])
+@token_required
+def edit_profile(payload):
+    data = request.json
+    user_type = data.get('user_type')
+
+    if user_type != 'admin':
+        return jsonify({'message': 'Invalid user type'}), 400
+
+    # Validasi input
+    admin_id = data.get('id_admin')
+    new_username = data.get('admin_username')
+    new_email = data.get('admin_email')
+
+    if not admin_id or not new_username:
+        return jsonify({'message': 'Admin ID and new username are required'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            UPDATE admins
+            SET admin_username = %s,
+                admin_email = COALESCE(%s, admin_email)
+            WHERE id_admin = %s
+            """,
+            (new_username, new_email, admin_id)
         )
         conn.commit()
-        response = {'message': 'Profile update succesfully'}
-        return jsonify(response), 201
-    except:
+
+        response = {
+            'message': 'Admin profile updated successfully',
+            'updated_username': new_username,
+            'updated_email': new_email
+        }
+        return jsonify(response), 200
+    except Exception as e:
         conn.rollback()
-        response = {'message': 'Profile update failed'}
+        print(f'Error: {e}')
+        response = {'message': 'Failed to update admin profile'}
         return jsonify(response), 500
     finally:
+        cursor.close()
         conn.close()
 
-@app.route("/reset-pass", methods = ['POST'])
-def reset_pw():
+#! RESET PASSWORD
+@app.route("/reset-admin-pass", methods=['POST'])
+def reset_admin_pw():
+    print("Reset password endpoint called")  # Tambahkan log untuk debugging
     data = request.json
-    username = data.get('username')
+    admin_username = data.get('admin_username')
     new_pass = data.get('password')
 
+    if not admin_username or not new_pass:
+        return jsonify({'message': 'Admin username and password are required'}), 400
+
+    # Hash password baru
     hashed_new_pass = bcrypt.hashpw(new_pass.encode('utf-8'), bcrypt.gensalt())
     stored_new_pass = hashed_new_pass.decode('utf-8')
 
@@ -221,67 +321,72 @@ def reset_pw():
     try:
         cursor.execute(
             """
-            UPDATE users
-            SET password = %s
-            WHERE username = %s
+            UPDATE admins
+            SET admin_pass = %s
+            WHERE admin_username = %s
             """,
-            (stored_new_pass, username)
+            (stored_new_pass, admin_username)
         )
         if cursor.rowcount == 0:
-            response = {'message': 'Username not found'}
-            return jsonify(response), 404
+            return jsonify({'message': 'Admin username not found'}), 404
         
         conn.commit()
-        response = {'message': 'Reset Password succesfully'}
-        return jsonify(response), 201
-    except:
+        return jsonify({'message': 'Admin password reset successfully'}), 201
+
+    except Exception as e:
         conn.rollback()
-        response = {'message': 'Reset Password failed'}
-        return jsonify(response), 500
+        print(f'Error: {e}')
+        return jsonify({'message': 'Reset admin password failed'}), 500
+
     finally:
-        pass
+        cursor.close()
+        conn.close()
 
-@app.route('/user-details', methods=['GET'])
-def user_details():
-    token = request.headers.get('Authorization')
-    print(token)
+# Jalankan aplikasi Flask
+if __name__ == '__main__':
+    app.run(debug=True)
 
-    if token:
-        try:
-            payload = jwt.decode(token.split()[1], secret_key, algorithms=['HS256'])
+# @app.route('/user-details', methods=['GET'])
+# def user_details():
+#     token = request.headers.get('Authorization')
+#     print(token)
 
-            print(payload)
+#     if token:
+#         try:
+#             payload = jwt.decode(token.split()[1], secret_key, algorithms=['HS256'])
 
-            user_id = payload['user_id']
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT user_id, full_name, points
-                FROM users
-                WHERE user_id = %s
-                """,
-                (user_id,)
-            )
-            user = cursor.fetchone()
+#             print(payload)
 
-            if user:
-                user_id, full_name, points = user[0], user[1], user[2]
-                response = {
-                    'user_id': user_id,
-                    'full_name': full_name,
-                    'points': points
-                }
-                return jsonify(response), 200
-            else:
-                return jsonify({'message': 'User not found'}), 404
+#             user_id = payload['user_id']
+#             conn = get_db_connection()
+#             cursor = conn.cursor()
+#             cursor.execute(
+#                 """
+#                 SELECT user_id, full_name, points
+#                 FROM users
+#                 WHERE user_id = %s
+#                 """,
+#                 (user_id,)
+#             )
+#             user = cursor.fetchone()
 
-        except jwt.ExpiredSignatureError:
-            return jsonify({'message': 'Token has expired'}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({'message': 'Invalid token'}), 402
-    else:
-        return jsonify({'message': 'Token is missing'}), 402
+#             if user:
+#                 user_id, full_name, points = user[0], user[1], user[2]
+#                 response = {
+#                     'user_id': user_id,
+#                     'full_name': full_name,
+#                     'points': points
+#                 }
+#                 return jsonify(response), 200
+#             else:
+#                 return jsonify({'message': 'User not found'}), 404
+
+#         except jwt.ExpiredSignatureError:
+#             return jsonify({'message': 'Token has expired'}), 401
+#         except jwt.InvalidTokenError:
+#             return jsonify({'message': 'Invalid token'}), 402
+#     else:
+#         return jsonify({'message': 'Token is missing'}), 402
     
 @app.route('/get-barang', methods=['GET'])
 def exchangeable_items():
