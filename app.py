@@ -344,7 +344,8 @@ def reset_admin_pw():
 
 # Jalankan aplikasi Flask
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Ganti host dengan '0.0.0.0' agar bisa diakses dari jaringan lokal
+    app.run(host='0.0.0.0', port=5000)
 
 # @app.route('/user-details', methods=['GET'])
 # def user_details():
